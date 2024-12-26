@@ -1,9 +1,10 @@
 package com.example.linebot.controller;
 
-import com.example.linebot.model.Message;
 import com.example.linebot.model.User;
+import com.example.linebot.model.Coop;
 import com.example.linebot.service.LineMessagingService;
 import com.example.linebot.service.UserService;
+import com.example.linebot.service.CoopService;
 
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/line")
@@ -23,15 +25,16 @@ public class LineBotController {
     private LineMessagingService lineMessagingService;
 
     @Autowired
-    private UserService userService; // ใช้ userService แทน UserService (หลีกเลี่ยงปัญหาตัวพิมพ์ใหญ่)
+    private UserService userService;
+
+    @Autowired
+    private CoopService coopService; // เพิ่ม CoopService
 
     @PostMapping("/webhook")
     public ResponseEntity<String> handleWebhook(@RequestBody String requestBody) {
         try {
-            // แปลงข้อมูลที่ได้รับจาก webhook เป็น JSONObject
             JSONObject jsonObject = new JSONObject(requestBody);
             
-            // ดึงค่า userId และ message จากข้อมูลที่ได้รับ
             String userId = jsonObject.getJSONArray("events")
                                        .getJSONObject(0)
                                        .getJSONObject("source")
@@ -41,7 +44,6 @@ public class LineBotController {
                                                .getJSONObject("message")
                                                .getString("text");
 
-            // ตรวจสอบว่า userId หรือ receivedMessage เป็นค่าว่างหรือไม่
             if (userId == null || userId.isEmpty()) {
                 return ResponseEntity.status(400).body("Error: User ID is missing or invalid");
             }
@@ -50,24 +52,40 @@ public class LineBotController {
                 return ResponseEntity.status(400).body("Error: Received message is empty");
             }
 
-            // สร้าง Message object (ไม่เก็บในฐานข้อมูล)
-            Message message = new Message(userId, receivedMessage);
-
-            // ส่งข้อความตอบกลับตามเงื่อนไข
+            // ฟังก์ชัน "Hello" เพื่อตอบกลับคำทักทาย
             if ("Hello".equalsIgnoreCase(receivedMessage)) {
                 lineMessagingService.pushMessage(userId, "Hi! How can I help you?");
-            } else if ("get_test_data".equalsIgnoreCase(receivedMessage)) {
-                // ดึงข้อมูลจากฐานข้อมูล (UserService)
-                List<User> users = userService.getAllUsers(); // Fetch all users from the database
+            }
+            // คำสั่ง "get_user_details" สำหรับดึงข้อมูลผู้ใช้ทั้งหมด
+            else if ("get_user_details".equalsIgnoreCase(receivedMessage)) {
+                List<User> users = userService.getAllUsers();
                 StringBuilder responseMessage = new StringBuilder("All Users:\n");
+                
                 for (User user : users) {
-                    responseMessage.append(user.toString()).append("\n");
+                    responseMessage.append("ID: ").append(user.getId()).append(", ")
+                                   .append("Name: ").append(user.getName()).append(", ")
+                                   .append("Email: ").append(user.getEmail()).append("\n");
                 }
-                // ส่งข้อความตอบกลับ
+                
                 lineMessagingService.pushMessage(userId, responseMessage.toString());
             }
+            // ตรวจสอบว่าเป็น coop_code 6 หลัก
+            else if (receivedMessage.matches("^\\d{6}$")) {
+                String coopCode = receivedMessage;
 
-            // คุณสามารถเก็บ message object หรือใช้งานเพิ่มเติมตามต้องการที่นี่ได้
+                // ค้นหาข้อมูล coop จาก coop_code
+                Optional<Coop> coopOptional = coopService.getCoopByCode(coopCode);
+                if (coopOptional.isPresent()) {
+                    Coop coop = coopOptional.get();
+                    String response = "Coop Details:\n" +
+                                      "ID: " + coop.getId() + "\n" +
+                                      "Coop ID: " + coop.getCoopId() + "\n" +
+                                      "Name: " + coop.getName();
+                    lineMessagingService.pushMessage(userId, response);
+                } else {
+                    lineMessagingService.pushMessage(userId, "Coop not found for code: " + coopCode);
+                }
+            }
 
         } catch (Exception e) {
             e.printStackTrace();

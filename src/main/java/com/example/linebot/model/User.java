@@ -37,4 +37,15 @@ public class User {
     public void setEmail(String email) {
         this.email = email;
     }
+
+    // เปลี่ยน Long id เป็น String เพื่อความสะดวกในการแสดงผลใน webhook
+    public String getStringId() {
+        return id != null ? String.valueOf(id) : "Unknown ID";
+    }
+
+    // Override toString to format the user details for message response
+    @Override
+    public String toString() {
+        return "ID: " + getStringId() + ", Name: " + name + ", Email: " + email;
+    }
 }
